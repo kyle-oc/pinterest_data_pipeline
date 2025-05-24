@@ -1,18 +1,17 @@
 import requests
 from time import sleep
+from datetime import datetime
 import random
-from multiprocessing import Process
-import boto3
 import json
 import sqlalchemy
 from sqlalchemy import text
-import psycopg2
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from kafka import KafkaProducer
 from kafka import KafkaConsumer
 import uvicorn
 from threading import Thread
+from uuid import UUID
 
 random.seed(100)
 
@@ -21,7 +20,7 @@ class AWSDBConnector:
     def __init__(self):
         self.yaml_file = "/home/kyleoc/pinterest_data_pipeline/local_db_creds.yaml"
         self.db_creds = self.read_db_creds()        
-        engine = self.create_db_connector()
+        self.engine = self.create_db_connector()
         
     def read_db_creds(self):
         """
@@ -32,7 +31,6 @@ class AWSDBConnector:
         """
         try:
             with open(self.yaml_file, 'r') as y:
-                print(y)
                 return yaml.safe_load(y)
         except FileNotFoundError:
             print(f"\nError: The file {self.yaml_file} was not found.\n")
@@ -53,12 +51,10 @@ class AWSDBConnector:
 
 new_connector = AWSDBConnector()
 
-
-def run_infinite_post_data_loop():
+def run_infinite_post_data_loop(engine):
     while True:
         sleep(random.randrange(0, 2))
         random_row = random.randint(0, 11000)
-        engine = new_connector.create_db_connector()
 
         with engine.connect() as connection:
 
@@ -84,69 +80,67 @@ def run_infinite_post_data_loop():
             print(geo_result)
             print(user_result)
 
-            # TODO Milestone 4 Task 1
-            # Note - This will work with the POST function
-            # FastAPI will infer what the payload and topic are automatically!
-            # Naturally this is only 1 topic you will have to replicate this for the other 2.
-            # response_geo = requests.post("http://localhost:8000/send_data?topic=pin_data.geo",  data=json.dumps(geo_result, default=str))
+            headers = {'Content-Type': 'application/json'}
+
+            # Milestone 4 Task 1
+            geo_result = convert_non_serializables(geo_result)
+            response_geo = requests.post("http://localhost:8000/send_data?topic=pin_data.geo", json=geo_result, headers=headers)
+            
+            pin_result = convert_non_serializables(pin_result)
+            response_pins = requests.post("http://localhost:8000/send_data?topic=pin_data.pins", json=pin_result, headers=headers)
+            
+            user_result = convert_non_serializables(user_result)            
+            response_users = requests.post("http://localhost:8000/send_data?topic=pin_data.users", json=user_result, headers=headers)
+            
+    
+def convert_non_serializables(obj):
+    serializable_obj = obj.copy()
+    for key, value in serializable_obj.items():
+        if isinstance(value, datetime):
+            serializable_obj[key] = value.isoformat()
+        elif isinstance(value, UUID):
+            serializable_obj[key] = str(value)
+    return serializable_obj
 
 
 if __name__ == "__main__":
-    # TODO When you arrive at specific Milestones/Tasks uncomment the code associated!
+    # Milestone 4 Task 2
+    api = FastAPI()
 
 
-    # TODO Milestone 4 Task 2
-    # api = FastAPI()
+    # Milestone 4 Task 1
+    producer = KafkaProducer(
+    bootstrap_servers="localhost:9092",
+    client_id="data_producer",
+    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+)
 
+    # # Milestone 4 task 2   
+    @api.get("/get_data")
+    def retrieve_data(topic: str = Query(...)):
+        temp_consumer = KafkaConsumer(
+            topic,
+            bootstrap_servers="localhost:9092",
+            auto_offset_reset="earliest",
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+            consumer_timeout_ms=1000  # Stop after 1 second if no messages
+        )
+        for msg in temp_consumer:
+            return msg.value
+        return {"message": f"No messages found on topic {topic}"}
 
-    # TODO Milestone 4 Task 1
-    # producer = KafkaProducer(
-    #     bootstrap_servers="localhost:9092",
-        # TODO uncomment and fill in below fields:
-        #client_id= , # Name the producer apprioprately
-        #value_serializer= # Hint - Serialise Python dict to bytes using JSON and encode using utf-8
-    # )
+    # Milestone 4 task 2
+    @api.post("/send_data")
+    def send_data(payload: dict, topic: str):
+        print(f"Sending to topic {topic}: {payload}")
+        producer.send(topic, value=payload)
+        producer.flush()
+        return {"status": "Message sent"}
 
+    # Milestone 4 task 2
+    def run_webserver():
+        uvicorn.run(api, host="localhost", port=8000)
 
-    # TODO Milestone 4 task 1
-    # consumer = KafkaConsumer(
-    #     "pin_data.geo",
-    #     bootstrap_servers="localhost:9092",
-        # TODO uncomment and fill in below fields:
-        #auto_offset_reset= ,
-        #value_deserializer= # Hint - Load the JSON
-    # )
-
-
-    # TODO Milestone 4 task 2
-    # @api.get("/get_data")
-    # def retrieve_data():
-    #     msg = next(consumer)
-    #     return msg
-
-
-    # TODO Milestone 4 task 2
-    # @api.post("/send_data")
-    # def send_data(payload: dict, topic: str):
-    #     print(payload)
-        # TODO send the data using the Kafka Producer
-        # 
-        # producer.flush() # This line ensures all messages are sent to Kafka broker
-        
-
-    # TODO Milestone 4 task 2
-    # def run_webserver():
-    #     uvicorn.run(app=api, host="localhost", port=8000)
-    #     return 
-    
-
-    # TODO Milestone 4 task 2
-    # Thread(target=run_webserver, daemon=True).start()
-
-
-    run_infinite_post_data_loop()
-    print('Working')
-    
-    
-
-
+    # Milestone 4 task 2
+    Thread(target=run_webserver, daemon=True).start()
+    run_infinite_post_data_loop(new_connector.engine)
