@@ -101,13 +101,13 @@ This project simulates a real-time data pipeline that streams Pinterest data usi
 
 ## Project Structure
 
-pinterest_data_pipeline/
+```pinterest_data_pipeline/
 ├── user_posting_emulation.py       # Main script: extracts, sends and serves data
 ├── local_db_creds.yaml             # Local DB credentials (not committed)
 ├── README.md                       # Project documentation
 ├── requirements.txt                # Python dependencies
 └── .gitignore                      # Files to ignore (should include credentials)
-
+```
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.

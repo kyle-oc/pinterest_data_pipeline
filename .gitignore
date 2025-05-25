@@ -1,3 +1,4 @@
 pinterest_data_pipeline_sql
 local_db_creds.yaml
 kafka_output/
+csv_files/
