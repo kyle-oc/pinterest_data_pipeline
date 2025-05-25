@@ -34,12 +34,13 @@ This project simulates a real-time data pipeline that streams Pinterest data usi
 
 - Python 3
 - PostgreSQL
-- Kafka (local, standalone)
+- Kafka
 - FastAPI
 - SQLAlchemy
 - Uvicorn
 - kafka-python
 - PyYAML
+- Databricks
 
 ## Installation
 
@@ -103,6 +104,7 @@ This project simulates a real-time data pipeline that streams Pinterest data usi
 
 ```pinterest_data_pipeline/
 ├── user_posting_emulation.py       # Main script: extracts, sends and serves data
+├── databricks_integration.pynb     # Databricks script: imports csv files, converts to DataFrames, then cleans
 ├── local_db_creds.yaml             # Local DB credentials (not committed)
 ├── README.md                       # Project documentation
 ├── requirements.txt                # Python dependencies
